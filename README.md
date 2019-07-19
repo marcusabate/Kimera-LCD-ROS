@@ -87,9 +87,9 @@ custom parameters for the LoopClosureDetector module.
 
 ## TODO
 
--[ ] Support for offline rosbag parsing
--[ ] Publish numerical error in loop closures based on ground truth
--[ ] Update ROS wrapper to current spark_vio_ros framework
--[ ] Refactor to inherit from spark_vio_ros to prevent code duplication
--[ ] CMakeLists.txt and package.xml cleanup
--[ ] Get rid of trackerParameters.yaml requirement
+- [ ] Support for offline rosbag parsing
+- [ ] Publish numerical error in loop closures based on ground truth
+- [ ] Update ROS wrapper to current spark_vio_ros framework
+- [ ] Refactor to inherit from spark_vio_ros to prevent code duplication
+- [ ] CMakeLists.txt and package.xml cleanup
+- [ ] Get rid of trackerParameters.yaml requirement
