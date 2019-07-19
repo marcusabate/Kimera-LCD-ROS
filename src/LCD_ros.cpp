@@ -30,6 +30,7 @@ LCD_ros::LCD_ros()
   nh_priv_.getParam("verbosity", verbosity_);
   nh_priv_.getParam("body_frame", body_frame_);
   nh_priv_.getParam("gnd_truth_topic", gnd_truth_topic_);
+  // TODO: add visualize option
 
   if (use_custom_params) {
     std::string path_to_params;
@@ -330,12 +331,12 @@ void LCD_ros::callbackCamAndProcessStereo(
 
 void LCD_ros::leftCameraInfoCallback(
     const sensor_msgs::CameraInfo::ConstPtr& msg) {
-  // TODO
+  // TODO real time camera parameter calibration
 }
 
 void LCD_ros::rightCameraInfoCallback(
     const sensor_msgs::CameraInfo::ConstPtr& msg) {
-  // TODO
+  // TODO real time camera parameter calibration
 }
 
 void LCD_ros::publishOutput(const LoopClosureDetectorOutputPayload& payload) {
