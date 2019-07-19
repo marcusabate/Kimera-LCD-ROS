@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>lcd_ros</name>
+  <version>4.0.0</version>
+  <description>Standalone tester for Loop Closure Detection for SPARK VIO
+  </description>
+
+  <maintainer email="mabate@mit.edu">Marcus Abate</maintainer>
+  <license>TODO</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+  <buildtool_depend>catkin_simple</buildtool_depend>
+
+  <build_depend>SparkVio</build_depend>
+
+  <depend>roscpp</depend>
+  <depend>std_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>message_filters</depend>
+  <depend>image_transport</depend>
+  <depend>rosbag</depend>
+  <depend>cv_bridge</depend>
+  <depend>tf2</depend>
+  <depend>tf2_ros</depend>
+  <depend>tf</depend>
+
+</package>

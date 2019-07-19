@@ -1,0 +1,61 @@
+<launch>
+  <arg name="dataset_name" value="EUROC"/>
+
+  <arg name="body_frame" value="base_link"/>
+  <arg name="gnd_truth_topic" value="/vicon/firefly_sbx/firefly_sbx"/>
+  <!-- <arg name="lcd_params_path"
+    value="$(find lcd_ros)/param/$(arg dataset_name)/LCDParams.yaml"/> -->
+  <arg name="tracker_params_path"
+    value="$(find lcd_ros)/param/$(arg dataset_name)/trackerParameters.yaml"/>
+    <arg name="use_custom_params" default="false"/>
+  <arg name="log_output" default="false" />
+  <arg name="verbosity" default="0" />
+  <arg name="visualize" default="false"/>
+
+  <!-- Each dataset has its own set of parameter files -->
+  <rosparam command="load"
+    file="$(find lcd_ros)/param/$(arg dataset_name)/calibration.yaml"/>
+
+  <!-- Parameter file names -->
+  <!-- <param name="LCD_PARAMS_PATH" value="$(arg LCD_PARAMS_PATH)"/> -->
+  <param name="tracker_params_path" value="$(arg tracker_params_path)"/>
+
+	<!-- Launch main node  -->
+	<node name="stereo_lcd_ros" pkg="lcd_ros" type="stereo_lcd_ros"
+        output="screen">
+
+    <param name="use_custom_params" value="$(arg use_custom_params)"/>
+    <param name="log_output" value="$(arg log_output)"/>
+    <param name="verbosity" value="$(arg verbosity)"/>
+    <param name="body_frame" value="$(arg body_frame)"/>
+    <param name="gnd_truth_topic" value="$(arg gnd_truth_topic)"/>
+
+    <!-- Remap Subscriber Topics -->
+    <remap from="/left_cam"               to="/cam0/image_raw"/>
+    <remap from="/right_cam"              to="/cam1/image_raw"/>
+    <remap from="/left_cam/camera_info"   to="/cam0/image_raw/camera_info"/>
+    <remap from="/right_cam/camera_info"  to="/cam1/image_raw/camera_info"/>
+
+    <!-- Remap Publisher Topics -->
+    <remap from="/lcd/detected_images"    to="/lcd/detected_images"/>
+    <remap from="/lcd/markers"            to="/lcd/markers"/>
+    <remap from="/lcd/detection_info"     to="/lcd/detection_info"/>
+
+  </node>
+
+  <!-- Launch Transfrom Converter Node -->
+  <node name="transform_converter_node" pkg="lcd_ros"
+    type="transform_converter_node.py" output="screen">
+
+    <param name="gnd_truth_topic" value="$(arg gnd_truth_topic)"/>
+    <param name="body_frame" value="$(arg body_frame)"/>
+
+  </node>
+
+  <group if="$(arg visualize)">
+    <node name="rviz" pkg="rviz" type="rviz" output="screen"
+      args="-d $(find lcd_ros)/rviz/lcd_ros_config.rviz"/>
+
+  </group>
+
+</launch>
