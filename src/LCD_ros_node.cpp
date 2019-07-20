@@ -8,7 +8,7 @@
 
 // TODO: need an offline version
 
-#include "LCD_ros.h"
+#include "lcd_ros/LCD_ros.h"
 
 #include <gflags/gflags.h>
 #include <glog/logging.h>

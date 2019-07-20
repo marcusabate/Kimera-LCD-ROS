@@ -6,7 +6,8 @@
   *
 **/
 
-#include "LCD_ros.h"
+#include "lcd_ros/LCD_ros.h"
+#include "lcd_ros/PoseError.h"
 
 namespace VIO {
 
@@ -30,6 +31,8 @@ LCD_ros::LCD_ros()
   nh_priv_.getParam("verbosity", verbosity_);
   nh_priv_.getParam("body_frame", body_frame_);
   nh_priv_.getParam("gnd_truth_topic", gnd_truth_topic_);
+  nh_priv_.getParam("visualize", visualize_);
+  nh_priv_.getParam("error_to_scale", error_to_scale_);
   // TODO: add visualize option
 
   if (use_custom_params) {
@@ -75,18 +78,21 @@ LCD_ros::LCD_ros()
       &LCD_ros::rightCameraInfoCallback, this);
 
   // Advertise for publishing loop closure events
-  // lcd_pub_ = nh_.advertise</* TODO: determine type */>("/lcd/detection", 1);
+  lcd_error_pub_ = nh_.advertise<lcd_ros::PoseError>("/lcd/detection_error", 1);
   lcd_image_pub_ = nh_.advertise<sensor_msgs::Image>("/lcd/deteced_images", 1);
-  lcd_marker_pub_ = nh_.advertise<visualization_msgs::MarkerArray>("/lcd/markers", 1);
-  lcd_pose_array_pub_ = nh_.advertise<geometry_msgs::PoseArray>("/lcd/pose_array", 1);
 
   db_tagged_frames_.clear();
 
   tfListener_ = std::unique_ptr<tf2_ros::TransformListener>(
       new tf2_ros::TransformListener(tfBuffer_));
 
-  markers_.markers.clear();
-  pose_array_.poses.clear();
+  if (visualize_) {
+    lcd_marker_pub_ = nh_.advertise<visualization_msgs::MarkerArray>("/lcd/markers", 1);
+    lcd_pose_array_pub_ = nh_.advertise<geometry_msgs::PoseArray>("/lcd/pose_array", 1);
+
+    markers_.markers.clear();
+    pose_array_.poses.clear();
+  }
 }
 
 bool LCD_ros::spin() {
@@ -348,9 +354,6 @@ void LCD_ros::publishOutput(const LoopClosureDetectorOutputPayload& payload) {
     ROS_WARN("Detected loop closure between frames %i and %i.",
         int(payload.id_recent_), int(payload.id_match_));
 
-    std::cout << "Relative pose: " << payload.relative_pose_ << std::endl;
-    // TODO: calc pose between the ground truth poses and then get an error
-
     LCDTaggedFrame query_frame = db_tagged_frames_[payload.id_recent_];
     LCDTaggedFrame match_frame = db_tagged_frames_[payload.id_match_];
 
@@ -411,95 +414,107 @@ void LCD_ros::publishOutput(const LoopClosureDetectorOutputPayload& payload) {
     gtsam::Pose3 W_to_B_Cur_Pose_computed = W_to_B_Ref_Pose_truth *
         payload.relative_pose_;
 
-    // TODO: publish info message containing error in the relative pose
+    // Compute and publish relative error in pose recovery
+    std::pair<double, double> rel_error =
+        UtilsOpenCV::ComputeRotationAndTranslationErrors(
+            W_to_B_Cur_Pose_computed, W_to_B_Cur_Pose_truth, error_to_scale_);
+    lcd_ros::PoseError error_msg;
+    error_msg.to_scale = error_to_scale_;
+    error_msg.rot_error = rel_error.first;
+    error_msg.trans_error = rel_error.second;
+    error_msg.id = frame_count_;
 
-    // Build pose object for ground truth ref frame
-    gtsam::Quaternion ref_truth_quat =
-        W_to_B_Ref_Pose_truth.rotation().toQuaternion();
-    geometry_msgs::Pose ref_truth_pose;
-    ref_truth_pose.position.x = W_to_B_Ref_Pose_truth.translation()[0];
-    ref_truth_pose.position.y = W_to_B_Ref_Pose_truth.translation()[1];
-    ref_truth_pose.position.z = W_to_B_Ref_Pose_truth.translation()[2];
-    ref_truth_pose.orientation.w = ref_truth_quat.w();
-    ref_truth_pose.orientation.x = ref_truth_quat.x();
-    ref_truth_pose.orientation.y = ref_truth_quat.y();
-    ref_truth_pose.orientation.z = ref_truth_quat.z();
+    lcd_error_pub_.publish(error_msg);
 
-    // Build pose object for computed current pose
-    gtsam::Quaternion cur_computed_quat =
-        W_to_B_Cur_Pose_computed.rotation().toQuaternion();
-    geometry_msgs::Pose cur_computed_pose;
-    cur_computed_pose.position.x = W_to_B_Cur_Pose_computed.translation()[0];
-    cur_computed_pose.position.y = W_to_B_Cur_Pose_computed.translation()[1];
-    cur_computed_pose.position.z = W_to_B_Cur_Pose_computed.translation()[2];
-    cur_computed_pose.orientation.w = cur_computed_quat.w();
-    cur_computed_pose.orientation.x = cur_computed_quat.x();
-    cur_computed_pose.orientation.y = cur_computed_quat.y();
-    cur_computed_pose.orientation.z = cur_computed_quat.z();
+    if (visualize_) {
+      // Build pose object for ground truth ref frame
+      gtsam::Quaternion ref_truth_quat =
+          W_to_B_Ref_Pose_truth.rotation().toQuaternion();
+      geometry_msgs::Pose ref_truth_pose;
+      ref_truth_pose.position.x = W_to_B_Ref_Pose_truth.translation()[0];
+      ref_truth_pose.position.y = W_to_B_Ref_Pose_truth.translation()[1];
+      ref_truth_pose.position.z = W_to_B_Ref_Pose_truth.translation()[2];
+      ref_truth_pose.orientation.w = ref_truth_quat.w();
+      ref_truth_pose.orientation.x = ref_truth_quat.x();
+      ref_truth_pose.orientation.y = ref_truth_quat.y();
+      ref_truth_pose.orientation.z = ref_truth_quat.z();
 
-    // Build pose object for ground truth current pose
-    gtsam::Quaternion cur_truth_quat =
-        W_to_B_Cur_Pose_truth.rotation().toQuaternion();
-    geometry_msgs::Pose cur_truth_pose;
-    cur_truth_pose.position.x = W_to_B_Cur_Pose_truth.translation()[0];
-    cur_truth_pose.position.y = W_to_B_Cur_Pose_truth.translation()[1];
-    cur_truth_pose.position.z = W_to_B_Cur_Pose_truth.translation()[2];
-    cur_truth_pose.orientation.w = cur_truth_quat.w();
-    cur_truth_pose.orientation.x = cur_truth_quat.x();
-    cur_truth_pose.orientation.y = cur_truth_quat.y();
-    cur_truth_pose.orientation.z = cur_truth_quat.z();
+      // Build pose object for computed current pose
+      gtsam::Quaternion cur_computed_quat =
+          W_to_B_Cur_Pose_computed.rotation().toQuaternion();
+      geometry_msgs::Pose cur_computed_pose;
+      cur_computed_pose.position.x = W_to_B_Cur_Pose_computed.translation()[0];
+      cur_computed_pose.position.y = W_to_B_Cur_Pose_computed.translation()[1];
+      cur_computed_pose.position.z = W_to_B_Cur_Pose_computed.translation()[2];
+      cur_computed_pose.orientation.w = cur_computed_quat.w();
+      cur_computed_pose.orientation.x = cur_computed_quat.x();
+      cur_computed_pose.orientation.y = cur_computed_quat.y();
+      cur_computed_pose.orientation.z = cur_computed_quat.z();
 
-    // Publish updated pose array to RVIZ
-    pose_array_.header.frame_id = "world";
-    pose_array_.header.stamp = ros::Time::now();
-    pose_array_.header.seq++;
-    pose_array_.poses.push_back(ref_truth_pose);
-    pose_array_.poses.push_back(cur_computed_pose);
-    pose_array_.poses.push_back(cur_truth_pose);
-    lcd_pose_array_pub_.publish(pose_array_);
+      // Build pose object for ground truth current pose
+      gtsam::Quaternion cur_truth_quat =
+          W_to_B_Cur_Pose_truth.rotation().toQuaternion();
+      geometry_msgs::Pose cur_truth_pose;
+      cur_truth_pose.position.x = W_to_B_Cur_Pose_truth.translation()[0];
+      cur_truth_pose.position.y = W_to_B_Cur_Pose_truth.translation()[1];
+      cur_truth_pose.position.z = W_to_B_Cur_Pose_truth.translation()[2];
+      cur_truth_pose.orientation.w = cur_truth_quat.w();
+      cur_truth_pose.orientation.x = cur_truth_quat.x();
+      cur_truth_pose.orientation.y = cur_truth_quat.y();
+      cur_truth_pose.orientation.z = cur_truth_quat.z();
 
-    // Build arrow marker for the arrow between the ref and cur computed frames
-    visualization_msgs::Marker arrow_marker_1;
-    arrow_marker_1.header.stamp = ros::Time::now();
-    arrow_marker_1.header.frame_id = "world";
-    arrow_marker_1.ns = "LCD";
-    arrow_marker_1.type = visualization_msgs::Marker::ARROW;
-    arrow_marker_1.action = visualization_msgs::Marker::ADD;
-    arrow_marker_1.scale.x = 0.025;
-    arrow_marker_1.scale.y = 0.05;
-    arrow_marker_1.scale.z = 0.05;
-    arrow_marker_1.color.a = 1.0;
-    arrow_marker_1.color.g = 1.0;
+      // Publish updated pose array to RVIZ
+      pose_array_.header.frame_id = "world";
+      pose_array_.header.stamp = ros::Time::now();
+      pose_array_.header.seq++;
+      pose_array_.poses.push_back(ref_truth_pose);
+      pose_array_.poses.push_back(cur_computed_pose);
+      pose_array_.poses.push_back(cur_truth_pose);
+      lcd_pose_array_pub_.publish(pose_array_);
 
-    arrow_marker_1.points.push_back(ref_truth_pose.position);
-    arrow_marker_1.points.push_back(cur_computed_pose.position);
+      // Build arrow marker for the arrow between the ref and cur computed frames
+      visualization_msgs::Marker arrow_marker_1;
+      arrow_marker_1.header.stamp = ros::Time::now();
+      arrow_marker_1.header.frame_id = "world";
+      arrow_marker_1.ns = "LCD";
+      arrow_marker_1.type = visualization_msgs::Marker::ARROW;
+      arrow_marker_1.action = visualization_msgs::Marker::ADD;
+      arrow_marker_1.scale.x = 0.025;
+      arrow_marker_1.scale.y = 0.05;
+      arrow_marker_1.scale.z = 0.05;
+      arrow_marker_1.color.a = 1.0;
+      arrow_marker_1.color.g = 1.0;
 
-    marker_id_++;
-    arrow_marker_1.id = marker_id_;
+      arrow_marker_1.points.push_back(ref_truth_pose.position);
+      arrow_marker_1.points.push_back(cur_computed_pose.position);
 
-    // Build arrow marker for the arrow between the ref and cur computed frames
-    visualization_msgs::Marker arrow_marker_2;
-    arrow_marker_2.header.stamp = ros::Time::now();
-    arrow_marker_2.header.frame_id = "world";
-    arrow_marker_2.ns = "LCD";
-    arrow_marker_2.type = visualization_msgs::Marker::ARROW;
-    arrow_marker_2.action = visualization_msgs::Marker::ADD;
-    arrow_marker_2.scale.x = 0.025;
-    arrow_marker_2.scale.y = 0.05;
-    arrow_marker_2.scale.z = 0.05;
-    arrow_marker_2.color.a = 1.0;
-    arrow_marker_2.color.r = 1.0;
+      marker_id_++;
+      arrow_marker_1.id = marker_id_;
 
-    arrow_marker_2.points.push_back(cur_computed_pose.position);
-    arrow_marker_2.points.push_back(cur_truth_pose.position);
+      // Build arrow marker for the arrow between the ref and cur computed frames
+      visualization_msgs::Marker arrow_marker_2;
+      arrow_marker_2.header.stamp = ros::Time::now();
+      arrow_marker_2.header.frame_id = "world";
+      arrow_marker_2.ns = "LCD";
+      arrow_marker_2.type = visualization_msgs::Marker::ARROW;
+      arrow_marker_2.action = visualization_msgs::Marker::ADD;
+      arrow_marker_2.scale.x = 0.025;
+      arrow_marker_2.scale.y = 0.05;
+      arrow_marker_2.scale.z = 0.05;
+      arrow_marker_2.color.a = 1.0;
+      arrow_marker_2.color.r = 1.0;
 
-    marker_id_++;
-    arrow_marker_2.id = marker_id_;
+      arrow_marker_2.points.push_back(cur_computed_pose.position);
+      arrow_marker_2.points.push_back(cur_truth_pose.position);
 
-    // Publish markers
-    markers_.markers.push_back(arrow_marker_1);
-    markers_.markers.push_back(arrow_marker_2);
-    lcd_marker_pub_.publish(markers_);
+      marker_id_++;
+      arrow_marker_2.id = marker_id_;
+
+      // Publish markers
+      markers_.markers.push_back(arrow_marker_1);
+      markers_.markers.push_back(arrow_marker_2);
+      lcd_marker_pub_.publish(markers_);
+    }
   }
 }
 

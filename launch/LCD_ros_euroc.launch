@@ -11,6 +11,7 @@
   <arg name="log_output" default="false" />
   <arg name="verbosity" default="0" />
   <arg name="visualize" default="false"/>
+  <arg name="error_to_scale" default="false"/>
 
   <!-- Each dataset has its own set of parameter files -->
   <rosparam command="load"
@@ -29,6 +30,8 @@
     <param name="verbosity" value="$(arg verbosity)"/>
     <param name="body_frame" value="$(arg body_frame)"/>
     <param name="gnd_truth_topic" value="$(arg gnd_truth_topic)"/>
+    <param name="visualize" value="$(arg visualize)"/>
+    <param name="error_to_scale" value="error_to_scale"/>
 
     <!-- Remap Subscriber Topics -->
     <remap from="/left_cam"               to="/cam0/image_raw"/>
@@ -39,7 +42,7 @@
     <!-- Remap Publisher Topics -->
     <remap from="/lcd/detected_images"    to="/lcd/detected_images"/>
     <remap from="/lcd/markers"            to="/lcd/markers"/>
-    <remap from="/lcd/detection_info"     to="/lcd/detection_info"/>
+    <remap from="/lcd/detection_error"    to="/lcd/detection_error"/>
 
   </node>
 

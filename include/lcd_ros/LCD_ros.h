@@ -13,11 +13,12 @@
 #include <common/vio_types.h>
 #include <datasource/DataSource.h>
 #include <VioFrontEndParams.h>
+#include <UtilsOpenCV.h>
 
 #include <opencv2/core/core.hpp>
 #include <opencv2/core/matx.hpp>
 
-#include "StereoBuffer.h"
+#include "lcd_ros/StereoBuffer.h"
 
 #include <ros/ros.h>
 #include <ros/callback_queue.h>
@@ -93,7 +94,7 @@ private:
 private:
   ros::NodeHandle nh_;
   ros::NodeHandle nh_priv_;
-  ros::Publisher lcd_info_pub_;
+  ros::Publisher lcd_error_pub_;
   ros::Publisher lcd_marker_pub_;
   ros::Publisher lcd_pose_array_pub_;
   ros::Publisher lcd_image_pub_;
@@ -109,6 +110,8 @@ private:
   LoopClosureDetectorParams lcd_params_;
   bool log_output_;
   int verbosity_;
+  bool visualize_;
+  bool error_to_scale_;
   int frame_count_;
 
   Timestamp last_time_stamp_;

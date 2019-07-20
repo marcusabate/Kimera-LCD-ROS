@@ -3,7 +3,7 @@
  * @brief  Stereo image buffer ROS wrapper
  * @author Yun Chang
  */
-#include "StereoBuffer.h"
+#include "lcd_ros/StereoBuffer.h"
 
 VIO::Timestamp StereoBuffer::getEarliestTimestamp() const {
   return earliest_timestamp_;
