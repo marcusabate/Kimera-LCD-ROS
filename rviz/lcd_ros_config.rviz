@@ -75,7 +75,7 @@ Visualization Manager:
       Value: true
     - Class: rviz/Image
       Enabled: true
-      Image Topic: /lcd/deteced_images
+      Image Topic: /lcd/image
       Max Value: 1
       Median window: 5
       Min Value: 0
@@ -99,7 +99,7 @@ Visualization Manager:
       Value: true
     - Class: rviz/MarkerArray
       Enabled: true
-      Marker Topic: /lcd/markers
+      Marker Topic: /lcd/marker_array
       Name: MarkerArray
       Namespaces:
         LCD: true

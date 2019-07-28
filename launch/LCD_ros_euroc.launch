@@ -1,61 +1,91 @@
 <launch>
+  <!-- Set 'dataset_name' to the name of the folder for params -->
   <arg name="dataset_name" value="EUROC"/>
+  <!-- Set 'cache_time' to approximately the length of the rosbag dataset -->
+  <arg name="cache_time" value="144.0"/>
+  <!-- Set 'use_sim_time' to 'true' for using published clock messages -->
+  <arg name="use_sim_time" default="true"/>
 
-  <arg name="body_frame" value="base_link"/>
-  <arg name="gnd_truth_topic" value="/vicon/firefly_sbx/firefly_sbx"/>
-  <!-- <arg name="lcd_params_path"
-    value="$(find lcd_ros)/param/$(arg dataset_name)/LCDParams.yaml"/> -->
+  <!-- Parmeter path arguments -->
   <arg name="tracker_params_path"
     value="$(find lcd_ros)/param/$(arg dataset_name)/trackerParameters.yaml"/>
-    <arg name="use_custom_params" default="false"/>
+  <arg name="lcd_params_path"
+    value="$(find lcd_ros)/param/$(arg dataset_name)/LCDParameters.yaml"/>
+
+  <!-- LCD parameter arguments -->
+  <arg name="body_frame" value="base_link"/>
+  <arg name="gnd_truth_topic" value="/vicon/firefly_sbx/firefly_sbx"/>
   <arg name="log_output" default="false" />
-  <arg name="verbosity" default="0" />
-  <arg name="visualize" default="false"/>
+  <arg name="visualize" default="true"/>
   <arg name="error_to_scale" default="false"/>
+
+  <!-- Publisher topic arguments -->
+  <arg name="closure_result_topic" value="result"/>
+  <arg name="closure_image_topic" value="image"/>
+  <arg name="error_topic" value="error"/>
+  <arg name="markers_topic" value="marker_array"/>
+  <arg name="poses_topic" value="pose_array"/>
 
   <!-- Each dataset has its own set of parameter files -->
   <rosparam command="load"
     file="$(find lcd_ros)/param/$(arg dataset_name)/calibration.yaml"/>
 
-  <!-- Parameter file names -->
-  <!-- <param name="LCD_PARAMS_PATH" value="$(arg LCD_PARAMS_PATH)"/> -->
+  <!-- If using sim time, must tell roscore -->
+  <group if="$(arg use_sim_time)">
+    <rosparam param="/use_sim_time">true</rosparam>
+  </group>
+
+  <!-- Parameter file names (as global parameters) -->
+  <param name="lcd_params_path" value="$(arg lcd_params_path)"/>
   <param name="tracker_params_path" value="$(arg tracker_params_path)"/>
 
 	<!-- Launch main node  -->
-	<node name="stereo_lcd_ros" pkg="lcd_ros" type="stereo_lcd_ros"
+	<node ns="lcd" name="lcd_ros_node" pkg="lcd_ros" type="lcd_ros_node"
         output="screen">
 
-    <param name="use_custom_params" value="$(arg use_custom_params)"/>
     <param name="log_output" value="$(arg log_output)"/>
-    <param name="verbosity" value="$(arg verbosity)"/>
     <param name="body_frame" value="$(arg body_frame)"/>
     <param name="gnd_truth_topic" value="$(arg gnd_truth_topic)"/>
-    <param name="visualize" value="$(arg visualize)"/>
-    <param name="error_to_scale" value="error_to_scale"/>
+
+    <param name="closure_result_topic" value="$(arg closure_result_topic)"/>
+    <param name="closure_image_topic" value="$(arg closure_image_topic)"/>
 
     <!-- Remap Subscriber Topics -->
-    <remap from="/left_cam"               to="/cam0/image_raw"/>
-    <remap from="/right_cam"              to="/cam1/image_raw"/>
-    <remap from="/left_cam/camera_info"   to="/cam0/image_raw/camera_info"/>
-    <remap from="/right_cam/camera_info"  to="/cam1/image_raw/camera_info"/>
+    <remap from="left_cam"               to="/cam0/image_raw"/>
+    <remap from="right_cam"              to="/cam1/image_raw"/>
+    <remap from="left_cam/camera_info"   to="/cam0/image_raw/camera_info"/>
+    <remap from="right_cam/camera_info"  to="/cam1/image_raw/camera_info"/>
 
-    <!-- Remap Publisher Topics -->
-    <remap from="/lcd/detected_images"    to="/lcd/detected_images"/>
-    <remap from="/lcd/markers"            to="/lcd/markers"/>
-    <remap from="/lcd/detection_error"    to="/lcd/detection_error"/>
+    <!-- NOTE: Remap the Publisher Topis by changing args -->
 
   </node>
 
   <!-- Launch Transfrom Converter Node -->
-  <node name="transform_converter_node" pkg="lcd_ros"
-    type="transform_converter_node.py" output="screen">
+  <node ns="lcd" name="transform_converter_node" pkg="lcd_ros"
+        type="transform_converter_node.py" output="screen">
 
     <param name="gnd_truth_topic" value="$(arg gnd_truth_topic)"/>
     <param name="body_frame" value="$(arg body_frame)"/>
 
   </node>
 
+  <!-- Launch Visualization Nodes -->
   <group if="$(arg visualize)">
+    <node ns="lcd" name="closure_visualizer_node" pkg="lcd_ros"
+          type="closure_visualizer_node.py" output="screen">
+
+      <param name="cache_time" value="$(arg cache_time)"/>
+      <param name="error_to_scale" value="$(arg error_to_scale)"/>
+
+      <!-- NOTE: Remap the Publisher and Subscriber Topis by changing args -->
+      <param name="closure_result_topic" value="$(arg closure_result_topic)"/>
+      <param name="error_topic" value="$(arg error_topic)"/>
+      <param name="body_frame" value="$(arg body_frame)"/>
+      <param name="markers_topic" value="$(arg markers_topic)"/>
+      <param name="poses_topic" value="$(arg poses_topic)"/>
+
+    </node>
+
     <node name="rviz" pkg="rviz" type="rviz" output="screen"
       args="-d $(find lcd_ros)/rviz/lcd_ros_config.rviz"/>
 

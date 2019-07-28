@@ -57,6 +57,7 @@ struct StereoCalibration {
   gtsam::Pose3 camL_Pose_camR_; // relative pose between cameras
 };
 
+// TODO: no longer need the LCDTaggedFrame struct since transform_ is unneeded
 struct LCDTaggedFrame {
   Timestamp timestamp_;
   cv::Mat left_img_;
@@ -87,6 +88,9 @@ private:
 
   void rightCameraInfoCallback(const sensor_msgs::CameraInfo::ConstPtr& msg);
 
+  void poseToTransformMsg(const gtsam::Pose3& pose,
+      geometry_msgs::Transform* tf);
+
   void publishOutput(const LoopClosureDetectorOutputPayload& payload);
 
   void print() const;
@@ -94,24 +98,17 @@ private:
 private:
   ros::NodeHandle nh_;
   ros::NodeHandle nh_priv_;
-  ros::Publisher lcd_error_pub_;
-  ros::Publisher lcd_marker_pub_;
-  ros::Publisher lcd_pose_array_pub_;
   ros::Publisher lcd_image_pub_;
+  ros::Publisher lcd_closure_pub_;
   ros::Subscriber cam_info_left_sub_;
   ros::Subscriber cam_info_right_sub_;
 
-  tf2_ros::Buffer tfBuffer_;
-  std::unique_ptr<tf2_ros::TransformListener> tfListener_;
-  std::string body_frame_;
-  std::string gnd_truth_topic_;
+  std::string closure_image_topic_, closure_result_topic_;
+  std::string body_frame_, gnd_truth_topic_;
 
   std::unique_ptr<LoopClosureDetector> lcd_detector_;
   LoopClosureDetectorParams lcd_params_;
   bool log_output_;
-  int verbosity_;
-  bool visualize_;
-  bool error_to_scale_;
   int frame_count_;
 
   Timestamp last_time_stamp_;
@@ -124,14 +121,9 @@ private:
 
   StereoCalibration stereo_calib_;
   StereoMatchingParams stereo_matching_params_;
-  bool cam_info_calibrated_; // TODO: not used
 
   StereoBuffer stereo_buffer_;
   std::vector<LCDTaggedFrame> db_tagged_frames_;
-
-  visualization_msgs::MarkerArray markers_;
-  unsigned int marker_id_;
-  geometry_msgs::PoseArray pose_array_;
 
 }; // class LCD_ros
 

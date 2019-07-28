@@ -7,7 +7,7 @@
 **/
 
 #include "lcd_ros/LCD_ros.h"
-#include "lcd_ros/PoseError.h"
+#include "lcd_ros/Closure.h"
 
 namespace VIO {
 
@@ -17,47 +17,34 @@ LCD_ros::LCD_ros()
       frame_count_(0),
       last_time_stamp_(0),
       it_(nh_),
-      left_img_subscriber_(it_, "/left_cam", 1),
-      right_img_subscriber_(it_, "/right_cam", 1),
-      sync(sync_pol(10), left_img_subscriber_, right_img_subscriber_),
-      cam_info_calibrated_(false),
-      marker_id_(0) {
+      left_img_subscriber_(it_, "left_cam", 1),
+      right_img_subscriber_(it_, "right_cam", 1),
+      sync(sync_pol(10), left_img_subscriber_, right_img_subscriber_) {
   ROS_INFO(">>>>>>>>>>>>> INITIALIZING LCD ROS WRAPPER >>>>>>>>>>>>>");
 
   // Get and declare Loop Closure Detector parameters
-  bool use_custom_params;
-  nh_priv_.getParam("use_custom_params", use_custom_params);
   nh_priv_.getParam("log_output", log_output_);
-  nh_priv_.getParam("verbosity", verbosity_);
   nh_priv_.getParam("body_frame", body_frame_);
   nh_priv_.getParam("gnd_truth_topic", gnd_truth_topic_);
-  nh_priv_.getParam("visualize", visualize_);
-  nh_priv_.getParam("error_to_scale", error_to_scale_);
-  // TODO: add visualize option
 
-  if (use_custom_params) {
-    std::string path_to_params;
-    nh_.getParam("lcd_params_path", path_to_params);
-    lcd_params_ = LoopClosureDetectorParams();
-    lcd_params_.parseYAML(path_to_params);
-  }
-  else {
-    lcd_params_ = LoopClosureDetectorParams();
-  }
+  nh_priv_.getParam("closure_result_topic", closure_result_topic_);
+  nh_priv_.getParam("closure_image_topic", closure_image_topic_);
+
+  std::string path_to_params;
+  nh_.getParam("/lcd_params_path", path_to_params);
+  lcd_params_ = LoopClosureDetectorParams();
+  lcd_params_.parseYAML(path_to_params);
 
   // Get stereo calibration parmeters
   parseCameraData(&stereo_calib_);
 
   // Stereo matching parameters
-    std::string tracker_params_path;
-    nh_.getParam("tracker_params_path", tracker_params_path);
-    VioFrontEndParams frontend_params;
-    frontend_params.parseYAML(tracker_params_path);
-    stereo_matching_params_ = frontend_params.getStereoMatchingParams();
-
-  // Start the loop detector
-  lcd_detector_ = VIO::make_unique<LoopClosureDetector>(lcd_params_,
-      log_output_, verbosity_);
+  std::string tracker_params_path;
+  nh_.getParam("/tracker_params_path", tracker_params_path);
+  VioFrontEndParams frontend_params;
+  // TODO: get rid of requirement to have frontend_params
+  frontend_params.parseYAML(tracker_params_path);
+  stereo_matching_params_ = frontend_params.getStereoMatchingParams();
 
   // Synchronize stereo image callback
   sync.registerCallback(boost::bind(&LCD_ros::callbackCamAndProcessStereo,
@@ -72,27 +59,22 @@ LCD_ros::LCD_ros()
   async_spinner_cam.start();
 
   // Subscribe to info topics to get camera parameters on the fly
-  cam_info_left_sub_ = nh_.subscribe("/left_cam/camera_info", 1,
+  cam_info_left_sub_ = nh_.subscribe("left_cam/camera_info", 1,
       &LCD_ros::leftCameraInfoCallback, this);
-  cam_info_right_sub_ = nh_.subscribe("/right_cam/camera_info", 1,
+  cam_info_right_sub_ = nh_.subscribe("right_cam/camera_info", 1,
       &LCD_ros::rightCameraInfoCallback, this);
 
   // Advertise for publishing loop closure events
-  lcd_error_pub_ = nh_.advertise<lcd_ros::PoseError>("/lcd/detection_error", 1);
-  lcd_image_pub_ = nh_.advertise<sensor_msgs::Image>("/lcd/deteced_images", 1);
+  lcd_image_pub_ = nh_.advertise<sensor_msgs::Image>(closure_image_topic_, 1);
+  lcd_closure_pub_ = nh_.advertise<lcd_ros::Closure>(closure_result_topic_, 1);
 
   db_tagged_frames_.clear();
 
-  tfListener_ = std::unique_ptr<tf2_ros::TransformListener>(
-      new tf2_ros::TransformListener(tfBuffer_));
+  // Start the loop detector
+  lcd_detector_ = VIO::make_unique<LoopClosureDetector>(lcd_params_,
+      log_output_);
 
-  if (visualize_) {
-    lcd_marker_pub_ = nh_.advertise<visualization_msgs::MarkerArray>("/lcd/markers", 1);
-    lcd_pose_array_pub_ = nh_.advertise<geometry_msgs::PoseArray>("/lcd/pose_array", 1);
-
-    markers_.markers.clear();
-    pose_array_.poses.clear();
-  }
+  ROS_INFO(">>>>>>>>>>>>> LCD ROS WRAPPER INITIALIZED >>>>>>>>>>>>>");
 }
 
 bool LCD_ros::spin() {
@@ -145,10 +127,17 @@ bool LCD_ros::spin() {
             stereo_calib_.camL_Pose_camR_,
             stereo_matching_params_);
 
+        stereo_frame.setIsKeyframe(true);
+        stereo_frame.sparseStereoMatching();
+
+        std::shared_ptr<LoopClosureDetectorInputPayload> input_payload =
+            std::make_shared<LoopClosureDetectorInputPayload>(
+                timestamp, stereo_frame);
+
         auto tic = VIO::utils::Timer::tic();
 
         LoopClosureDetectorOutputPayload output_payload =
-            lcd_detector_->checkLoopClosure(stereo_frame);
+            lcd_detector_->spinOnce(input_payload);
 
         auto toc = VIO::utils::Timer::toc(tic);
         ROS_INFO("Processed frame %i in %i ms.", frame_count_, int(toc.count()));
@@ -208,11 +197,11 @@ bool LCD_ros::parseCameraData(StereoCalibration* stereo_calib) {
 
   // Rate
   double rate;
-  nh_.getParam("camera_rate_hz", rate);
+  nh_.getParam("/camera_rate_hz", rate);
 
   // Resoltuion
   std::vector<int> resolution;
-  nh_.getParam("camera_resolution", resolution);
+  nh_.getParam("/camera_resolution", resolution);
 
   // Get distortion/intrinsics/extrinsics for each camera
   for (int i = 0; i < 2; i++){
@@ -229,7 +218,7 @@ bool LCD_ros::parseCameraData(StereoCalibration* stereo_calib) {
     }
     // Parse intrinsics (camera matrix)
     std::vector<double> intrinsics;
-    nh_.getParam(camera_name + "intrinsics", intrinsics);
+    nh_.getParam("/" + camera_name + "intrinsics", intrinsics);
     camera_param_i.intrinsics_ = intrinsics;
     // Conver intrinsics to camera matrix (OpenCV format)
     camera_param_i.camera_matrix_ = cv::Mat::eye(3, 3, CV_64F);
@@ -241,8 +230,8 @@ bool LCD_ros::parseCameraData(StereoCalibration* stereo_calib) {
     // Parse extrinsics (rotation and translation)
     std::vector<double> extrinsics;
     std::vector<double> frame_change; // encode calibration frame to body frame
-    CHECK(nh_.getParam(camera_name + "extrinsics", extrinsics));
-    CHECK(nh_.getParam("calibration_to_body_frame", frame_change));
+    CHECK(nh_.getParam("/" + camera_name + "extrinsics", extrinsics));
+    CHECK(nh_.getParam("/calibration_to_body_frame", frame_change));
     // Place into matrix
     // 4 4 is hardcoded here because currently only accept extrinsic input
     // in homoegeneous format [R T ; 0 1]
@@ -270,12 +259,12 @@ bool LCD_ros::parseCameraData(StereoCalibration* stereo_calib) {
 
     // Distortion model
     std::string distortion_model;
-    nh_.getParam("distortion_model", distortion_model);
+    nh_.getParam("/distortion_model", distortion_model);
     camera_param_i.distortion_model_ = distortion_model;
 
     // Parse distortion
     std::vector<double> d_coeff;
-    nh_.getParam(camera_name + "distortion_coefficients", d_coeff);
+    nh_.getParam("/" + camera_name + "distortion_coefficients", d_coeff);
     cv::Mat distortion_coeff;
 
     switch (d_coeff.size()) {
@@ -345,11 +334,21 @@ void LCD_ros::rightCameraInfoCallback(
   // TODO real time camera parameter calibration
 }
 
+void LCD_ros::poseToTransformMsg(const gtsam::Pose3& pose,
+    geometry_msgs::Transform* tf) {
+  gtsam::Quaternion quat = pose.rotation().toQuaternion();
+
+  tf->translation.x = pose.translation()[0];
+  tf->translation.y = pose.translation()[1];
+  tf->translation.z = pose.translation()[2];
+  tf->rotation.x = quat.x();
+  tf->rotation.y = quat.y();
+  tf->rotation.z = quat.z();
+  tf->rotation.w = quat.w();
+}
+
 void LCD_ros::publishOutput(const LoopClosureDetectorOutputPayload& payload) {
-  // TODO: publish loop closures in some visualizeable way to RVIZ
-  // This could be as simple as a transform between two frames that you make up,
-  // which you then visualize vs ground truth
-  // Only publish anything if there is a loop closure detected
+  // Only publish anything if there is a loop closure detected.
   if (payload.is_loop_) {
     ROS_WARN("Detected loop closure between frames %i and %i.",
         int(payload.id_recent_), int(payload.id_match_));
@@ -357,12 +356,14 @@ void LCD_ros::publishOutput(const LoopClosureDetectorOutputPayload& payload) {
     LCDTaggedFrame query_frame = db_tagged_frames_[payload.id_recent_];
     LCDTaggedFrame match_frame = db_tagged_frames_[payload.id_match_];
 
-    // Publish an image showing matched between the two images
+    // Publish an image showing ALL matches between the two images
+    // This includes matches that are later filtered out by Lowe + RANSAC
     cv::Mat matched_img = lcd_detector_->computeAndDrawMatchesBetweenFrames(
         query_frame.left_img_,
         match_frame.left_img_,
         payload.id_recent_,
-        payload.id_match_);
+        payload.id_match_,
+        false);
 
     cv_bridge::CvImage cv_image;
     cv_image.header.stamp = ros::Time::now();
@@ -374,147 +375,18 @@ void LCD_ros::publishOutput(const LoopClosureDetectorOutputPayload& payload) {
     cv_image.toImageMsg(ros_image);
     lcd_image_pub_.publish(ros_image);
 
-    // Get transforms to world for both frames
-    geometry_msgs::TransformStamped W_to_B_Cur_tf, W_to_B_Ref_tf;
-    try {
-      ros::Time query_time = ros::Time(query_frame.timestamp_ / 1e9);
-      ros::Time match_time = ros::Time(match_frame.timestamp_ / 1e9);
-      // ros::Time query_time = ros::Time::now();
-      // ros::Time match_time = ros::Time::now();
+    ros::Time query_time = ros::Time(query_frame.timestamp_ / 1e9);
+    ros::Time match_time = ros::Time(match_frame.timestamp_ / 1e9);
 
-      W_to_B_Cur_tf = tfBuffer_.lookupTransform("world", body_frame_,
-          query_time, ros::Duration(1.0));
-      W_to_B_Ref_tf = tfBuffer_.lookupTransform("world", body_frame_,
-          match_time, ros::Duration(1.0));
-    }
-    catch (tf2::TransformException &ex) {
-      ROS_WARN("%s",ex.what());
-    }
+    // Publish the loop closure result information
+    lcd_ros::Closure closure_msg;
+    closure_msg.cur_id = payload.id_recent_;
+    closure_msg.ref_id = payload.id_match_;
+    closure_msg.cur_time = query_time;
+    closure_msg.ref_time = match_time;
+    poseToTransformMsg(payload.relative_pose_, &closure_msg.transform);
 
-    // Convert to gtsam::Pose3 objets for ground truth poses
-    gtsam::Quaternion ref_tf_quat(W_to_B_Ref_tf.transform.rotation.w,
-        W_to_B_Ref_tf.transform.rotation.x,
-        W_to_B_Ref_tf.transform.rotation.y,
-        W_to_B_Ref_tf.transform.rotation.z);
-    gtsam::Point3 ref_tf_trans(W_to_B_Ref_tf.transform.translation.x,
-        W_to_B_Ref_tf.transform.translation.y,
-        W_to_B_Ref_tf.transform.translation.z);
-    gtsam::Pose3 W_to_B_Ref_Pose_truth(ref_tf_quat, ref_tf_trans);
-
-    gtsam::Quaternion cur_tf_quat(W_to_B_Cur_tf.transform.rotation.w,
-        W_to_B_Cur_tf.transform.rotation.x,
-        W_to_B_Cur_tf.transform.rotation.y,
-        W_to_B_Cur_tf.transform.rotation.z);
-    gtsam::Point3 cur_tf_trans(W_to_B_Cur_tf.transform.translation.x,
-        W_to_B_Cur_tf.transform.translation.y,
-        W_to_B_Cur_tf.transform.translation.z);
-    gtsam::Pose3 W_to_B_Cur_Pose_truth(cur_tf_quat, cur_tf_trans);
-
-    // Compute relative pose from world to computed current frame location
-    gtsam::Pose3 W_to_B_Cur_Pose_computed = W_to_B_Ref_Pose_truth *
-        payload.relative_pose_;
-
-    // Compute and publish relative error in pose recovery
-    std::pair<double, double> rel_error =
-        UtilsOpenCV::ComputeRotationAndTranslationErrors(
-            W_to_B_Cur_Pose_computed, W_to_B_Cur_Pose_truth, error_to_scale_);
-    lcd_ros::PoseError error_msg;
-    error_msg.to_scale = error_to_scale_;
-    error_msg.rot_error = rel_error.first;
-    error_msg.trans_error = rel_error.second;
-    error_msg.id = frame_count_;
-
-    lcd_error_pub_.publish(error_msg);
-
-    if (visualize_) {
-      // Build pose object for ground truth ref frame
-      gtsam::Quaternion ref_truth_quat =
-          W_to_B_Ref_Pose_truth.rotation().toQuaternion();
-      geometry_msgs::Pose ref_truth_pose;
-      ref_truth_pose.position.x = W_to_B_Ref_Pose_truth.translation()[0];
-      ref_truth_pose.position.y = W_to_B_Ref_Pose_truth.translation()[1];
-      ref_truth_pose.position.z = W_to_B_Ref_Pose_truth.translation()[2];
-      ref_truth_pose.orientation.w = ref_truth_quat.w();
-      ref_truth_pose.orientation.x = ref_truth_quat.x();
-      ref_truth_pose.orientation.y = ref_truth_quat.y();
-      ref_truth_pose.orientation.z = ref_truth_quat.z();
-
-      // Build pose object for computed current pose
-      gtsam::Quaternion cur_computed_quat =
-          W_to_B_Cur_Pose_computed.rotation().toQuaternion();
-      geometry_msgs::Pose cur_computed_pose;
-      cur_computed_pose.position.x = W_to_B_Cur_Pose_computed.translation()[0];
-      cur_computed_pose.position.y = W_to_B_Cur_Pose_computed.translation()[1];
-      cur_computed_pose.position.z = W_to_B_Cur_Pose_computed.translation()[2];
-      cur_computed_pose.orientation.w = cur_computed_quat.w();
-      cur_computed_pose.orientation.x = cur_computed_quat.x();
-      cur_computed_pose.orientation.y = cur_computed_quat.y();
-      cur_computed_pose.orientation.z = cur_computed_quat.z();
-
-      // Build pose object for ground truth current pose
-      gtsam::Quaternion cur_truth_quat =
-          W_to_B_Cur_Pose_truth.rotation().toQuaternion();
-      geometry_msgs::Pose cur_truth_pose;
-      cur_truth_pose.position.x = W_to_B_Cur_Pose_truth.translation()[0];
-      cur_truth_pose.position.y = W_to_B_Cur_Pose_truth.translation()[1];
-      cur_truth_pose.position.z = W_to_B_Cur_Pose_truth.translation()[2];
-      cur_truth_pose.orientation.w = cur_truth_quat.w();
-      cur_truth_pose.orientation.x = cur_truth_quat.x();
-      cur_truth_pose.orientation.y = cur_truth_quat.y();
-      cur_truth_pose.orientation.z = cur_truth_quat.z();
-
-      // Publish updated pose array to RVIZ
-      pose_array_.header.frame_id = "world";
-      pose_array_.header.stamp = ros::Time::now();
-      pose_array_.header.seq++;
-      pose_array_.poses.push_back(ref_truth_pose);
-      pose_array_.poses.push_back(cur_computed_pose);
-      pose_array_.poses.push_back(cur_truth_pose);
-      lcd_pose_array_pub_.publish(pose_array_);
-
-      // Build arrow marker for the arrow between the ref and cur computed frames
-      visualization_msgs::Marker arrow_marker_1;
-      arrow_marker_1.header.stamp = ros::Time::now();
-      arrow_marker_1.header.frame_id = "world";
-      arrow_marker_1.ns = "LCD";
-      arrow_marker_1.type = visualization_msgs::Marker::ARROW;
-      arrow_marker_1.action = visualization_msgs::Marker::ADD;
-      arrow_marker_1.scale.x = 0.025;
-      arrow_marker_1.scale.y = 0.05;
-      arrow_marker_1.scale.z = 0.05;
-      arrow_marker_1.color.a = 1.0;
-      arrow_marker_1.color.g = 1.0;
-
-      arrow_marker_1.points.push_back(ref_truth_pose.position);
-      arrow_marker_1.points.push_back(cur_computed_pose.position);
-
-      marker_id_++;
-      arrow_marker_1.id = marker_id_;
-
-      // Build arrow marker for the arrow between the ref and cur computed frames
-      visualization_msgs::Marker arrow_marker_2;
-      arrow_marker_2.header.stamp = ros::Time::now();
-      arrow_marker_2.header.frame_id = "world";
-      arrow_marker_2.ns = "LCD";
-      arrow_marker_2.type = visualization_msgs::Marker::ARROW;
-      arrow_marker_2.action = visualization_msgs::Marker::ADD;
-      arrow_marker_2.scale.x = 0.025;
-      arrow_marker_2.scale.y = 0.05;
-      arrow_marker_2.scale.z = 0.05;
-      arrow_marker_2.color.a = 1.0;
-      arrow_marker_2.color.r = 1.0;
-
-      arrow_marker_2.points.push_back(cur_computed_pose.position);
-      arrow_marker_2.points.push_back(cur_truth_pose.position);
-
-      marker_id_++;
-      arrow_marker_2.id = marker_id_;
-
-      // Publish markers
-      markers_.markers.push_back(arrow_marker_1);
-      markers_.markers.push_back(arrow_marker_2);
-      lcd_marker_pub_.publish(markers_);
-    }
+    lcd_closure_pub_.publish(closure_msg);
   }
 }
 

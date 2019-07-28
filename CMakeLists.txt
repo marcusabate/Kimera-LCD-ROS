@@ -4,6 +4,7 @@ add_compile_options(-std=c++14)
 
 # TODO: change name of repo to lcd_ros
 # TODO: add REQUIRED spark_vio
+# TODO: figure out why generate_messages() isn't needed for catkin_simple
 
 find_package(catkin_simple REQUIRED)
 
@@ -23,6 +24,7 @@ add_message_files(
   DIRECTORY msg
   FILES
   PoseError.msg
+  Closure.msg
 )
 
 catkin_simple()
@@ -38,13 +40,13 @@ catkin_package(
   INCLUDE_DIRS include
 )
 
-cs_add_executable(stereo_lcd_ros
+cs_add_executable(lcd_ros_node
   src/LCD_ros_node.cpp
   src/LCD_ros.cpp
   src/StereoBuffer.cpp
 )
 
-target_link_libraries(stereo_lcd_ros SparkVio)
+target_link_libraries(lcd_ros_node SparkVio)
 
 cs_install()
 cs_export()

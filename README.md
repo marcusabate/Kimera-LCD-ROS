@@ -20,7 +20,7 @@ Currently, the best branch to use is [`feature/loop_closure`](https://github.mit
 
 ## Features
 
-The [`LCD_ros_node`](/src/LCD_ros_node.cpp) is the main node that spins the
+The [`LCD_ros_node`](/src/LCD_ros_node.cpp) node is the main node that spins the
 LoopClosureDetector pipeline. It expects stereo images published to two
 topics with message type `sensor_msgs::Image`. It will store these images in
 a local database and detect loop closures between similar images.
@@ -29,6 +29,15 @@ The node outputs an image including both frames involved in the loop closure
 as well as the feature correspondences drawn between the frames. All features
 are visualized as blue circles, while the correspondences selected to perform
 pose recovery have lines drawn between them.
+
+The node also outputs a [`Closure`](/msg/Closure.msg) message containing
+information regarding the loop closure detection, including the calculated
+relative pose.
+
+The [`closure_visualizer_node`](/scripts/closure_visualizer_node.py) node is
+used to visualize the loop closure results in RVIZ. The node outputs the error
+in the calculated relative pose as compared to ground truth, which is published
+to the tf tree by the [`transform_converter_node`](/scripts/transform_converter_node.py).
 
 The node also outputs a `geometry_msgs::PoseArray` and
 `visualization_msgs::MarkerArray` type message that can be visualized in RVIZ
@@ -82,13 +91,17 @@ custom parameters for the LoopClosureDetector module.
 ## ROS Launch Arguments
 
 * `bool log_output` is sent to LoopClosureDetector for sending output to a log file
-* `int verbosity` is sent to LoopClosureDetector for printing messages to console
+* `float cache_time` is sent to the closure visualizer node. It represents the length of the cache for the transform listener buffer. This should be set to the length of the rosbag dataset
 * `bool visualize` is for starting and publishing to RVIZ
+* `bool use_sim_time` simply sets the `/use_sim_time` global parameter
+
+Additionally, make sure the set parameters for the `LoopClosureDetector` module
+in [LCDParameters.yaml](/param/EUROC/LCDParameters.yaml). In particular you
+need to set the path for the VIO vocabulary module.
 
 ## TODO
 
 - [ ] Support for offline rosbag parsing
-- [ ] Publish numerical error in loop closures based on ground truth
 - [ ] Update ROS wrapper to current spark_vio_ros framework
 - [ ] Refactor to inherit from spark_vio_ros to prevent code duplication
 - [ ] CMakeLists.txt and package.xml cleanup

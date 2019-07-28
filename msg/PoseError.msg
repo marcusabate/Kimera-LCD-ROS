@@ -2,8 +2,8 @@
 #
 # rot_error is in radians, trans_error is in meters
 
-
-int32 id
+int32 ref_id
+int32 cur_id
 bool to_scale
 
 float32 rot_error
