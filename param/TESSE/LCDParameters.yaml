@@ -1,7 +1,7 @@
 %YAML:1.0
 # LoopClosureDetector parameters:
 use_nss: 1
-alpha: 0.005
+alpha: 0.3
 min_temporal_matches: 3
 dist_local: 20
 max_db_results: 50
@@ -25,7 +25,7 @@ ransac_probability_stereo: 0.995
 ransac_threshold_stereo: 0.15
 ransac_randomize_stereo: 0
 ransac_inlier_threshold_stereo: 0.5
-use_mono_rot: 0
+use_mono_rot: 1
 
 lowe_ratio: 0.7
 

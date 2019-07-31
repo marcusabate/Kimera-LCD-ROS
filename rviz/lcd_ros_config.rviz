@@ -156,18 +156,18 @@ Visualization Manager:
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: -0.953401505947113
-        Y: -5.099135875701904
-        Z: 3.030064344406128
+        X: -4.6940531730651855
+        Y: -0.7077839374542236
+        Z: 3.4316768646240234
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.34988152980804443
+      Pitch: 0.38988155126571655
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz)
-      Yaw: 4.4113545417785645
+      Yaw: 3.2263541221618652
     Saved: ~
 Window Geometry:
   Displays:

@@ -8,6 +8,10 @@
 
 #include "lcd_ros/LCD_ros.h"
 #include "lcd_ros/Closure.h"
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+
+DECLARE_string(vocabulary_path);
 
 namespace VIO {
 
@@ -25,15 +29,13 @@ LCD_ros::LCD_ros()
   // Get and declare Loop Closure Detector parameters
   nh_priv_.getParam("log_output", log_output_);
   nh_priv_.getParam("body_frame", body_frame_);
-  nh_priv_.getParam("gnd_truth_topic", gnd_truth_topic_);
+
+  std::string path_to_vocab;
+  nh_priv_.getParam("path_to_vocab", path_to_vocab);
+  FLAGS_vocabulary_path = path_to_vocab;
 
   nh_priv_.getParam("closure_result_topic", closure_result_topic_);
   nh_priv_.getParam("closure_image_topic", closure_image_topic_);
-
-  std::string path_to_params;
-  nh_.getParam("/lcd_params_path", path_to_params);
-  lcd_params_ = LoopClosureDetectorParams();
-  lcd_params_.parseYAML(path_to_params);
 
   // Get stereo calibration parmeters
   parseCameraData(&stereo_calib_);
@@ -71,6 +73,11 @@ LCD_ros::LCD_ros()
   db_tagged_frames_.clear();
 
   // Start the loop detector
+  std::string path_to_params;
+  nh_.getParam("/lcd_params_path", path_to_params);
+  lcd_params_ = LoopClosureDetectorParams();
+  lcd_params_.parseYAML(path_to_params);
+
   lcd_detector_ = VIO::make_unique<LoopClosureDetector>(lcd_params_,
       log_output_);
 

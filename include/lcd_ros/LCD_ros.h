@@ -104,7 +104,7 @@ private:
   ros::Subscriber cam_info_right_sub_;
 
   std::string closure_image_topic_, closure_result_topic_;
-  std::string body_frame_, gnd_truth_topic_;
+  std::string body_frame_;
 
   std::unique_ptr<LoopClosureDetector> lcd_detector_;
   LoopClosureDetectorParams lcd_params_;
