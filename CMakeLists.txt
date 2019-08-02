@@ -3,10 +3,11 @@ project(lcd_ros)
 add_compile_options(-std=c++14)
 
 # TODO: change name of repo to lcd_ros
-# TODO: add REQUIRED spark_vio
 # TODO: figure out why generate_messages() isn't needed for catkin_simple
 
 find_package(catkin_simple REQUIRED)
+
+find_package(SparkVio REQUIRED)
 
 find_package(catkin REQUIRED COMPONENTS
   message_filters
