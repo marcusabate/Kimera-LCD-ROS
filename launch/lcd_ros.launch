@@ -1,0 +1,87 @@
+<launch>
+  <!-- Set 'dataset_name' to the name of the folder for params -->
+  <arg name="dataset_name" value="EUROC"/>
+  <!-- Set 'cache_time' to approximately the length of the rosbag dataset -->
+  <arg name="cache_time" default="144.0"/>
+  <!-- Set 'use_sim_time' to 'true' for using published clock messages -->
+  <arg name="use_sim_time" default="true"/>
+  <!-- Set 'path_to_vocab' to the absolute path to vocabulary file (in VIO) -->
+  <arg name="path_to_vocab"
+       value="/home/marcus/code/VIO/vocabulary/ORBvoc.txt"/>
+  <!-- Set `online` to false to pre-parse the rosbag and process offline -->
+  <arg name="online" default="true"/>
+
+  <!-- Parmeter path arguments -->
+  <arg name="params_folder" value="$(find lcd_ros)/param/$(arg dataset_name)"/>
+
+  <!-- Topic remapping -->
+  <arg name="left_cam_topic"  default="/cam0/image_raw"/>
+  <arg name="right_cam_topic" default="/cam1/image_raw"/>
+  <arg name="imu_topic"       default="/imu0"/>
+
+  <!-- LCD parameter arguments -->
+  <arg name="body_frame"      default="base_link"/>
+  <arg name="gnd_truth_topic" default="/vicon/firefly_sbx/firefly_sbx"/>
+  <arg name="log_output"      default="false" />
+  <arg name="visualize"       default="true"/>
+  <arg name="error_to_scale"  default="false"/>
+
+  <!-- Publisher topic arguments -->
+  <arg name="closure_result_topic"  default="result"/>
+  <arg name="closure_image_topic"   default="image"/>
+  <arg name="error_topic"           default="error"/>
+  <arg name="markers_topic"         default="marker_array"/>
+  <arg name="poses_topic"           default="pose_array"/>
+
+  <!-- Each dataset has its own set of parameter files -->
+  <rosparam command="load"
+    file="$(arg params_folder)/calibration.yaml"/>
+
+  <!-- If using sim time, must tell roscore -->
+  <!-- <group if="$(arg use_sim_time)">
+    <rosparam param="/use_sim_time">true</rosparam>
+  </group> -->
+
+	<!-- Launch main node  -->
+	<node ns="lcd" name="lcd_ros_node" pkg="lcd_ros" type="lcd_ros_node"
+        output="screen"
+        launch-prefix="gdb -ex run --args"
+        args="
+          --vocabulary_path=$(arg path_to_vocab)
+          --lcd_params_path=$(arg params_folder)/LCDParameters.yaml
+          --tracker_params_path=$(arg params_folder)/trackerParameters.yaml">
+
+    <param name="log_output" value="$(arg log_output)"/>
+    <param name="body_frame" value="$(arg body_frame)"/>
+
+    <param name="closure_result_topic"  value="$(arg closure_result_topic)"/>
+    <param name="closure_image_topic"   value="$(arg closure_image_topic)"/>
+
+    <!-- Remap Subscriber Topics -->
+    <remap from="left_cam"               to="$(arg left_cam_topic)"/>
+    <remap from="right_cam"              to="$(arg right_cam_topic)"/>
+    <remap from="imu"                    to="$(arg imu_topic)"/>
+    <remap from="left_cam/camera_info"   to="$(arg left_cam_topic)/camera_info"/>
+    <remap from="right_cam/camera_info"  to="$(arg right_cam_topic)/camera_info"/>
+
+    <!-- NOTE: Remap the Publisher Topis by changing args -->
+  </node>
+
+  <!-- Launch Visualization Nodes -->
+  <group if="$(arg visualize)">
+    <node ns="lcd" name="closure_visualizer_node" pkg="lcd_ros"
+          type="closure_visualizer_node.py" output="screen">
+
+      <param name="cache_time"     value="$(arg cache_time)"/>
+      <param name="error_to_scale" value="$(arg error_to_scale)"/>
+
+      <!-- NOTE: Remap the Publisher and Subscriber Topis by changing args -->
+      <param name="closure_result_topic"  value="$(arg closure_result_topic)"/>
+      <param name="error_topic"           value="$(arg error_topic)"/>
+      <param name="body_frame"            value="$(arg body_frame)"/>
+      <param name="markers_topic"         value="$(arg markers_topic)"/>
+      <param name="poses_topic"           value="$(arg poses_topic)"/>
+    </node>
+  </group>
+
+</launch>

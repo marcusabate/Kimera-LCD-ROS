@@ -12,6 +12,8 @@
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 
+DECLARE_string(lcd_params_path);
+DECLARE_string(tracker_params_path);
 DECLARE_string(vocabulary_path);
 
 namespace VIO {
@@ -19,21 +21,17 @@ namespace VIO {
 LCD_ros::LCD_ros()
     : nh_(ros::NodeHandle()),
       nh_priv_(ros::NodeHandle("~")),
-      frame_count_(0),
+      frame_count_(1),
       last_time_stamp_(0),
-      it_(nh_),
-      left_img_subscriber_(it_, "left_cam", 1),
-      right_img_subscriber_(it_, "right_cam", 1),
-      sync(sync_pol(10), left_img_subscriber_, right_img_subscriber_) {
+      it_(nullptr),
+      left_img_subscriber_(),
+      right_img_subscriber_(),
+      sync_(nullptr) {
   ROS_INFO(">>>>>>>>>>>>> INITIALIZING LCD ROS WRAPPER >>>>>>>>>>>>>");
 
   // Get and declare Loop Closure Detector parameters
   nh_priv_.getParam("log_output", log_output_);
   nh_priv_.getParam("body_frame", body_frame_);
-
-  std::string path_to_vocab;
-  nh_priv_.getParam("path_to_vocab", path_to_vocab);
-  FLAGS_vocabulary_path = path_to_vocab;
 
   nh_priv_.getParam("closure_result_topic", closure_result_topic_);
   nh_priv_.getParam("closure_image_topic", closure_image_topic_);
@@ -42,22 +40,29 @@ LCD_ros::LCD_ros()
   parseCameraData(&stereo_calib_);
 
   // Stereo matching parameters
-  std::string tracker_params_path;
-  nh_.getParam("/tracker_params_path", tracker_params_path);
   VioFrontEndParams frontend_params;
   // TODO: get rid of requirement to have frontend_params
-  frontend_params.parseYAML(tracker_params_path);
+  frontend_params.parseYAML(FLAGS_tracker_params_path);
   stereo_matching_params_ = frontend_params.getStereoMatchingParams();
 
   // Synchronize stereo image callback
-  sync.registerCallback(boost::bind(&LCD_ros::callbackCamAndProcessStereo,
-      this, _1, _2) );
+  it_ = VIO::make_unique<image_transport::ImageTransport>(nh_);
+  DCHECK(it_);
 
-  // Define callback queue for camera data
+  left_img_subscriber_.subscribe(*it_, "left_cam", 1);
+  right_img_subscriber_.subscribe(*it_, "right_cam", 1);
+
+  sync_ = VIO::make_unique<message_filters::Synchronizer<sync_pol>>(
+      sync_pol(10), left_img_subscriber_, right_img_subscriber_);
+  DCHECK(sync_);
+  sync_->registerCallback(
+      boost::bind(&LCD_ros::callbackCamAndProcessStereo, this, _1, _2));
+
+  // Define Callback Queue for Cam Data
   ros::CallbackQueue cam_queue;
-  nh_.setCallbackQueue(&cam_queue);
+  nh_cam_.setCallbackQueue(&cam_queue);
 
-  // Spawn Asyn spinner for camera data
+  // Spawn Async Spinner (Running on Custom Queue) for Cam
   ros::AsyncSpinner async_spinner_cam(0, &cam_queue);
   async_spinner_cam.start();
 
@@ -74,10 +79,8 @@ LCD_ros::LCD_ros()
   db_tagged_frames_.clear();
 
   // Start the loop detector
-  std::string path_to_params;
-  nh_.getParam("/lcd_params_path", path_to_params);
   lcd_params_ = LoopClosureDetectorParams();
-  lcd_params_.parseYAML(path_to_params);
+  lcd_params_.parseYAML(FLAGS_lcd_params_path);
 
   lcd_detector_ = VIO::make_unique<LoopClosureDetector>(lcd_params_,
       log_output_);
@@ -109,7 +112,7 @@ bool LCD_ros::spin() {
                 break;
             case VisionSensorType::RGBD : // just use depth to "fake right pixel matches"
                 // apply conversion
-  				      left_image = readRosRGBImage(left_ros_img);
+  				      left_image = readRosImage(left_ros_img);
   				      right_image = readRosDepthImage(right_ros_img);
                 break;
               break;
@@ -139,8 +142,8 @@ bool LCD_ros::spin() {
         stereo_frame.sparseStereoMatching();
 
         std::shared_ptr<LoopClosureDetectorInputPayload> input_payload =
-            std::make_shared<LoopClosureDetectorInputPayload>(
-                timestamp, stereo_frame);
+            std::make_shared<LoopClosureDetectorInputPayload>(timestamp,
+                frame_count_, stereo_frame, gtsam::Pose3());
 
         auto tic = VIO::utils::Timer::tic();
 
@@ -154,6 +157,8 @@ bool LCD_ros::spin() {
 
         last_time_stamp_ = timestamp;
         frame_count_++;
+      } else {
+        // TODO(marcus)
       }
     }
     ros::spinOnce();
@@ -163,44 +168,47 @@ bool LCD_ros::spin() {
   return true;
 }
 
-cv::Mat LCD_ros::readRosImage(const sensor_msgs::ImageConstPtr& img_msg) {
-  // Use cv_bridge to read ros image to cv::Mat
+cv::Mat LCD_ros::readRosImage(
+    const sensor_msgs::ImageConstPtr& img_msg) const {
   cv_bridge::CvImagePtr cv_ptr;
   try {
     cv_ptr = cv_bridge::toCvCopy(img_msg);
-  }
-  catch(cv_bridge::Exception& exception) {
+  } catch (cv_bridge::Exception& exception) {
     ROS_FATAL("cv_bridge exception: %s", exception.what());
     ros::shutdown();
   }
-  return cv_ptr->image; // Return cv::Mat
+
+  if (img_msg->encoding == sensor_msgs::image_encodings::BGR8) {
+    LOG(WARNING) << "Converting image...";
+    cv::cvtColor(cv_ptr->image, cv_ptr->image, cv::COLOR_BGR2GRAY);
+  } else {
+    CHECK_EQ(cv_ptr->encoding, sensor_msgs::image_encodings::MONO8)
+        << "Expected image with MONO8 or BGR8 encoding.";
+  }
+
+  return cv_ptr->image;
 }
 
-cv::Mat LCD_ros::readRosRGBImage(const sensor_msgs::ImageConstPtr& img_msg) {
-  // Use cv_bridge to read ros image to cv::Mat
-  cv::Mat img_rgb = LCD_ros::readRosImage(img_msg);
-  cv::cvtColor(img_rgb, img_rgb, cv::COLOR_BGR2GRAY); //CV_RGB2GRAY);
-  return img_rgb; // Return cv::Mat
-}
-
-cv::Mat LCD_ros::readRosDepthImage(const sensor_msgs::ImageConstPtr& img_msg) {
-  // Use cv_bridge to read ros image to cv::Mat
+cv::Mat LCD_ros::readRosDepthImage(
+    const sensor_msgs::ImageConstPtr& img_msg) const {
   cv_bridge::CvImagePtr cv_ptr;
   try {
-    cv_ptr = cv_bridge::toCvCopy(
-        img_msg,sensor_msgs::image_encodings::TYPE_16UC1);
-  }
-  catch(cv_bridge::Exception& exception) {
+    cv_ptr =
+        cv_bridge::toCvCopy(img_msg, sensor_msgs::image_encodings::TYPE_16UC1);
+  } catch (cv_bridge::Exception& exception) {
     ROS_FATAL("cv_bridge exception: %s", exception.what());
     ros::shutdown();
   }
   cv::Mat img_depth = cv_ptr->image;
-  if(img_depth.type()!=CV_16UC1)
-        img_depth.convertTo(img_depth,CV_16UC1); // mDepthMapFactor);
-  return img_depth; // Return cv::Mat
+  if (img_depth.type() != CV_16UC1) {
+    LOG(WARNING) << "Converting img_depth.";
+    img_depth.convertTo(img_depth, CV_16UC1);
+  }
+  return img_depth;
 }
 
 bool LCD_ros::parseCameraData(StereoCalibration* stereo_calib) {
+  CHECK_NOTNULL(stereo_calib);
   // Parse camera calibration info (from param server)
 
   // Rate
@@ -209,15 +217,17 @@ bool LCD_ros::parseCameraData(StereoCalibration* stereo_calib) {
 
   // Resoltuion
   std::vector<int> resolution;
-  nh_.getParam("/camera_resolution", resolution);
+  CHECK(nh_.getParam("/camera_resolution", resolution));
+  CHECK_EQ(resolution.size(), 2);
 
   // Get distortion/intrinsics/extrinsics for each camera
-  for (int i = 0; i < 2; i++){
+  for (int i = 0; i < 2; i++) {
     std::string camera_name;
     CameraParams camera_param_i;
     // Fill in rate and resolution
     camera_param_i.image_size_ = cv::Size(resolution[0], resolution[1]);
-    camera_param_i.frame_rate_ = 1.0 / rate; // Terminology wrong but following rest of the repo
+    // Terminology wrong but following rest of the repo
+    camera_param_i.frame_rate_ = 1.0 / rate;
 
     if (i == 0) {
       camera_name = "left_camera_";
@@ -227,6 +237,7 @@ bool LCD_ros::parseCameraData(StereoCalibration* stereo_calib) {
     // Parse intrinsics (camera matrix)
     std::vector<double> intrinsics;
     nh_.getParam("/" + camera_name + "intrinsics", intrinsics);
+    CHECK_EQ(intrinsics.size(), 4u);
     camera_param_i.intrinsics_ = intrinsics;
     // Conver intrinsics to camera matrix (OpenCV format)
     camera_param_i.camera_matrix_ = cv::Mat::eye(3, 3, CV_64F);
@@ -237,33 +248,38 @@ bool LCD_ros::parseCameraData(StereoCalibration* stereo_calib) {
 
     // Parse extrinsics (rotation and translation)
     std::vector<double> extrinsics;
-    std::vector<double> frame_change; // encode calibration frame to body frame
+    // Encode calibration frame to body frame
+    std::vector<double> frame_change;
     CHECK(nh_.getParam("/" + camera_name + "extrinsics", extrinsics));
     CHECK(nh_.getParam("/calibration_to_body_frame", frame_change));
+    CHECK_EQ(extrinsics.size(), 16u);
+    CHECK_EQ(frame_change.size(), 16u);
     // Place into matrix
     // 4 4 is hardcoded here because currently only accept extrinsic input
     // in homoegeneous format [R T ; 0 1]
     cv::Mat E_calib = cv::Mat::zeros(4, 4, CV_64F);
     cv::Mat calib2body = cv::Mat::zeros(4, 4, CV_64F);
     for (int k = 0; k < 16; k++) {
-      int row = k / 4;
+      int row = k / 4;  // Integer division, truncation of fractional part.
       int col = k % 4;
       E_calib.at<double>(row, col) = extrinsics[k];
       calib2body.at<double>(row, col) = frame_change[k];
     }
 
-    // TODO: Check frames convention!
-    cv::Mat E_body = calib2body * E_calib; // Extrinsics in body frame
+    // TODO(Yun): Check frames convention!
+    // Extrinsics in body frame
+    cv::Mat E_body = calib2body * E_calib;
 
     // restore back to vector form
     std::vector<double> extrinsics_body;
     for (int k = 0; k < 16; k++) {
-      int row = k / 4;
+      int row = k / 4;  // Integer division, truncation of fractional part.
       int col = k % 4;
       extrinsics_body.push_back(E_body.at<double>(row, col));
     }
 
-    camera_param_i.body_Pose_cam_ = UtilsOpenCV::Vec2pose(extrinsics_body, 4, 4);
+    camera_param_i.body_Pose_cam_ =
+        UtilsOpenCV::Vec2pose(extrinsics_body, 4, 4);
 
     // Distortion model
     std::string distortion_model;
@@ -276,51 +292,56 @@ bool LCD_ros::parseCameraData(StereoCalibration* stereo_calib) {
     cv::Mat distortion_coeff;
 
     switch (d_coeff.size()) {
-      case(4): // if given 4 coefficients
-        ROS_INFO("using radtan or equidistant distortion model (4 coefficients) for camera %d", i);
+      // if given 4 coefficients
+      case (4):
+        ROS_INFO(
+            "Using radtan or equidistant model (4 coefficients) for camera %d",
+            i);
         distortion_coeff = cv::Mat::zeros(1, 4, CV_64F);
-        distortion_coeff.at<double>(0,0) = d_coeff[0]; // k1
-        distortion_coeff.at<double>(0,1) = d_coeff[1]; // k2
-        distortion_coeff.at<double>(0,3) = d_coeff[2]; // p1 or k3
-        distortion_coeff.at<double>(0,4) = d_coeff[3]; // p2 or k4
+        distortion_coeff.at<double>(0, 0) = d_coeff[0];  // k1
+        distortion_coeff.at<double>(0, 1) = d_coeff[1];  // k2
+        distortion_coeff.at<double>(0, 3) = d_coeff[2];  // p1 or k3
+        distortion_coeff.at<double>(0, 4) = d_coeff[3];  // p2 or k4
         break;
 
-      case(5): // if given 5 coefficients
-        ROS_INFO("using radtan distortion model (5 coefficients) for camera %d", i);
+      case (5):  // if given 5 coefficients
+        ROS_INFO("Using radtan model (5 coefficients) for camera %d", i);
         distortion_coeff = cv::Mat::zeros(1, 5, CV_64F);
         for (int k = 0; k < 5; k++) {
-          distortion_coeff.at<double>(0, k) = d_coeff[k]; // k1, k2, k3, p1, p2
+          distortion_coeff.at<double>(0, k) = d_coeff[k];  // k1, k2, k3, p1, p2
         }
         break;
 
-      default: // otherwise
-        ROS_FATAL("Unsupported distortion format");
+      default:  // otherwise
+        ROS_FATAL("Unsupported distortion format.");
     }
 
     camera_param_i.distortion_coeff_ = distortion_coeff;
 
-    // TODO add skew (can add switch statement when parsing intrinsics)
-    camera_param_i.calibration_ = gtsam::Cal3DS2(intrinsics[0], // fx
-        intrinsics[1], // fy
-        0.0,           // skew
-        intrinsics[2], // u0
-        intrinsics[3], // v0
-        distortion_coeff.at<double>(0,0),  //  k1
-        distortion_coeff.at<double>(0,1),  //  k2
-        distortion_coeff.at<double>(0,3),  //  p1
-        distortion_coeff.at<double>(0,4)); //  p2
+    // TODO(unknown): add skew (can add switch statement when parsing
+    // intrinsics)
+    camera_param_i.calibration_ =
+        gtsam::Cal3DS2(intrinsics[0],                       // fx
+                       intrinsics[1],                       // fy
+                       0.0,                                 // skew
+                       intrinsics[2],                       // u0
+                       intrinsics[3],                       // v0
+                       distortion_coeff.at<double>(0, 0),   //  k1
+                       distortion_coeff.at<double>(0, 1),   //  k2
+                       distortion_coeff.at<double>(0, 3),   //  p1
+                       distortion_coeff.at<double>(0, 4));  //  p2
 
-    if (i == 0){
+    if (i == 0) {
       stereo_calib->left_camera_info_ = camera_param_i;
     } else {
       stereo_calib->right_camera_info_ = camera_param_i;
     }
-
   }
 
   // Calculate the pose of right camera relative to the left camera
-  stereo_calib->camL_Pose_camR_ = (stereo_calib->left_camera_info_.body_Pose_cam_).between(
-                                    stereo_calib->right_camera_info_.body_Pose_cam_);
+  stereo_calib->camL_Pose_camR_ =
+      (stereo_calib->left_camera_info_.body_Pose_cam_)
+          .between(stereo_calib->right_camera_info_.body_Pose_cam_);
 
   ROS_INFO("Parsed stereo camera calibration");
   return true;
@@ -357,7 +378,7 @@ void LCD_ros::poseToTransformMsg(const gtsam::Pose3& pose,
 
 void LCD_ros::publishOutput(const LoopClosureDetectorOutputPayload& payload) {
   // Only publish anything if there is a loop closure detected.
-  if (payload.is_loop_) {
+  if (payload.is_loop_closure_) {
     ROS_WARN("Detected loop closure between frames %i and %i.",
         int(payload.id_recent_), int(payload.id_match_));
 

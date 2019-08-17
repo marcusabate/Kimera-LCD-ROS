@@ -9,6 +9,7 @@
 #pragma once
 
 #include <LoopClosureDetector.h>
+#include <utils/Timer.h>
 #include <StereoFrame.h>
 #include <common/vio_types.h>
 #include <datasource/DataSource.h>
@@ -70,11 +71,9 @@ public:
   bool spin();
 
 private:
-  cv::Mat readRosImage(const sensor_msgs::ImageConstPtr& img_msg);
+  cv::Mat readRosImage(const sensor_msgs::ImageConstPtr& img_msg) const;
 
-  cv::Mat readRosRGBImage(const sensor_msgs::ImageConstPtr& img_msg);
-
-  cv::Mat readRosDepthImage(const sensor_msgs::ImageConstPtr& img_msg);
+  cv::Mat readRosDepthImage(const sensor_msgs::ImageConstPtr& img_msg) const;
 
   bool parseCameraData(StereoCalibration* stereo_calib);
 
@@ -95,6 +94,7 @@ private:
 private:
   ros::NodeHandle nh_;
   ros::NodeHandle nh_priv_;
+  ros::NodeHandle nh_cam_;
   ros::Publisher lcd_image_pub_;
   ros::Publisher lcd_closure_pub_;
   ros::Subscriber cam_info_left_sub_;
@@ -110,11 +110,11 @@ private:
 
   Timestamp last_time_stamp_;
 
-  image_transport::ImageTransport it_;
+  std::unique_ptr<image_transport::ImageTransport> it_;
   ImageSubscriber left_img_subscriber_;
   ImageSubscriber right_img_subscriber_;
 
-  message_filters::Synchronizer<sync_pol> sync;
+  std::unique_ptr<message_filters::Synchronizer<sync_pol>> sync_;
 
   StereoCalibration stereo_calib_;
   StereoMatchingParams stereo_matching_params_;

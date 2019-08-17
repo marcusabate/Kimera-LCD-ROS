@@ -13,8 +13,6 @@
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 
-// namespace VIO {
-
 int main(int argc, char** argv){
   google::ParseCommandLineFlags(&argc, &argv, true);
   google::InitGoogleLogging(argv[0]);
@@ -32,7 +30,5 @@ int main(int argc, char** argv){
 
   LOG(WARNING) << "Spin took: " << spin_duration.count() << " ms.";
 
-  return 0;
+  return is_pipeline_successful ? EXIT_SUCCESS : EXIT_FAILURE;
 }
-
-// } // namespace VIO

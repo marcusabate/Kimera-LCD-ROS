@@ -1,0 +1,44 @@
+<launch>
+  <arg name="dataset_name" value="EUROC"/>
+  <arg name="cache_time"   default="144.0"/>
+  <arg name="use_sim_time" default="true"/>
+  <arg name="online"       default="true"/>
+  <arg name="path_to_vocab"
+        value="/home/marcus/code/VIO/vocabulary/ORBvoc.txt"/>
+  <arg name="log_output"      default="false" />
+  <arg name="visualize"       default="true"/>
+
+  <arg name="error_to_scale"  default="false"/>
+  <arg name="body_frame"      default="base_link"/>
+
+  <!-- Publisher topic arguments -->
+  <arg name="closure_result_topic"  default="result"/>
+  <arg name="closure_image_topic"   default="image"/>
+  <arg name="error_topic"           default="error"/>
+  <arg name="markers_topic"         default="marker_array"/>
+  <arg name="poses_topic"           default="pose_array"/>
+
+  <!-- Subscriber topics -->
+  <arg name="left_cam_topic"  value="/tesse/left_cam"/>
+  <arg name="right_cam_topic" value="/tesse/right_cam"/>
+  <arg name="imu_topic"       value="/tesse/imu"/>
+
+  <include file="$(find lcd_ros)/launch/lcd_ros.launch"
+    pass_all_args="true"/>
+
+  <!-- Launch RVIZ -->
+  <group if="$(arg visualize)">
+    <node name="rviz" pkg="rviz" type="rviz" output="screen"
+          args="-d $(find lcd_ros)/rviz/lcd_ros_config.rviz">
+
+      <!-- Remap Subscriber Topics -->
+      <remap from="/cam0/image_raw"   to="$(arg left_cam_topic)"/>
+      <remap from="/cam1/image_raw"   to="$(arg right_cam_topic)"/>
+      <remap from="/lcd/result"       to="/lcd/$(arg closure_result_topic)"/>
+      <remap from="/lcd/image"        to="/lcd/$(arg closure_image_topic)"/>
+      <remap from="/lcd/marker_array" to="/lcd/$(arg markers_topic)"/>
+      <remap from="/lcd/pose_array"   to="/lcd/$(arg poses_topic)"/>
+    </node>
+  </group>
+
+</launch>

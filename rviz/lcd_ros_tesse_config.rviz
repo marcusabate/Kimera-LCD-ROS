@@ -3,7 +3,10 @@ Panels:
     Help Height: 138
     Name: Displays
     Property Tree Widget:
-      Expanded: ~
+      Expanded:
+        - /TF1/Frames1
+        - /MarkerArray1
+        - /PoseArray1
       Splitter Ratio: 0.6447106003761292
     Tree Height: 986
   - Class: rviz/Selection
@@ -57,9 +60,9 @@ Visualization Manager:
         All Enabled: false
         base_link:
           Value: true
-        fcu:
+        left_cam:
           Value: false
-        imu0:
+        right_cam:
           Value: false
         world:
           Value: true
@@ -71,9 +74,9 @@ Visualization Manager:
       Tree:
         world:
           base_link:
-            fcu:
+            left_cam:
               {}
-            imu0:
+            right_cam:
               {}
       Update Interval: 0
       Value: true
@@ -91,7 +94,7 @@ Visualization Manager:
       Value: true
     - Class: rviz/Image
       Enabled: true
-      Image Topic: /cam0/image_raw
+      Image Topic: /tesse/left_cam
       Max Value: 1
       Median window: 5
       Min Value: 0
