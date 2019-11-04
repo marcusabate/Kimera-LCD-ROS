@@ -14,6 +14,26 @@ including gtsam, OpenCV, and OpenGV.
 Install [Kimera-VIO](https://github.com/MIT-SPARK/Kimera-VIO) and all its dependencies
 by following the install instructions found in that repo.
 
+## Installation
+
+Clone this repo into a catkin ws:
+
+```bash
+cd ~/catkin_ws/src
+git clone https://github.com/marcusabate/Kimera-LCD-ROS.git
+```
+
+If you have `Kimera-VIO` and all its dependencies, you can build the workspace now. Otherwise, use the provided rosinstall files to automatically download them:
+
+```bash
+wstool init
+wstool merge Kimera-LCD-ROS/install/kimera_lcd_ros_http.rosinstall
+# wstool merge Kimera-LCD-ROS/install/kimera_lcd_ros_ssh.rosinstall  # Use this if you don't have ssh keys.
+wstool update
+
+catkin build kimera_lcd_ros
+```
+
 ## Features
 
 * The [`kimera_lcd_ros_node`](/src/kimera-lcd-ros-node.cpp) node is the main node that spins the
@@ -52,8 +72,8 @@ This can be done internally with the [`ros_lcd_data_provider`](/scripts/ros_lcd_
 ## Usage
 
 To run with one of the EuRoC datasets, simply run
-```
-roslaunch lcd_ros LCD_ros_euroc.launch
+```bash
+roslaunch kimera_lcd_ros lcd_ros_euroc.launch
 ```
 and then run the rosbag **once the vocabulary completely loads.** (A message
 will be printed to console when this is finished; it will take around 10
