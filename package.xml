@@ -12,16 +12,12 @@
   <buildtool_depend>catkin_simple</buildtool_depend>
 
   <depend>KimeraVIO</depend>
-  <depend>kimera_ros</depend>
 
   <depend>roscpp</depend>
   <depend>rospy</depend>
   <depend>std_msgs</depend>
   <depend>sensor_msgs</depend>
   <depend>geometry_msgs</depend>
-  <depend>message_filters</depend>
-  <depend>image_transport</depend>
-  <depend>rosbag</depend>
   <depend>cv_bridge</depend>
   <depend>tf2</depend>
   <depend>tf2_ros</depend>

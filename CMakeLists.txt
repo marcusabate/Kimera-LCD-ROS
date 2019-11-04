@@ -7,7 +7,7 @@ catkin_simple()
 
 cs_add_executable(kimera_lcd_ros_node
   src/kimera-lcd-ros-node.cpp
-  src/ros-lcd-data-source.cpp
+  src/lcd-wrapper.cpp
 )
 target_link_libraries(kimera_lcd_ros_node KimeraVIO)
 
