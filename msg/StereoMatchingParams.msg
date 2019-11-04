@@ -1,0 +1,15 @@
+# Message containing a full VIO::StereoMatchingParams object.
+
+float64 tol_template_matching
+float64 nominal_baseline
+uint32 templ_cols
+uint32 templ_rows
+uint32 stripe_extra_rows
+float64 min_point_dist
+float64 max_point_dist
+bool bidirectional_matching
+bool subpixel_refinement
+bool equalize_image
+uint32 vision_sensor_type
+float64 min_depth_factor
+float64 map_depth_factor

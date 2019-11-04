@@ -5,7 +5,7 @@ import numpy as np
 import tf
 import tf2_ros
 
-from lcd_ros.msg import Closure, PoseError
+from kimera_lcd_ros.msg import Closure, PoseError
 from visualization_msgs.msg import Marker, MarkerArray
 from geometry_msgs.msg import TransformStamped, Transform, Pose, PoseArray, \
         Quaternion, Vector3, Point
@@ -18,22 +18,15 @@ class ClosureVisualizerNode:
         # TODO: more elegant solution to this problem
         self.cache_time = rospy.get_param("~cache_time")
         self.error_to_scale = rospy.get_param("~error_to_scale")
+        self.body_frame_id = rospy.get_param("~body_frame_id")
+        self.world_frame_id = rospy.get_param("~world_frame_id")
 
-        self.closure_result_topic = rospy.get_param("~closure_result_topic")
-        self.error_topic = rospy.get_param("~error_topic")
-        self.body_frame = rospy.get_param("~body_frame")
-        self.markers_topic = rospy.get_param("~markers_topic")
-        self.poses_topic = rospy.get_param("~poses_topic")
-
-        self.closure_sub = rospy.Subscriber(self.closure_result_topic, \
+        self.closure_sub = rospy.Subscriber("result", \
             Closure, self.closure_cb, queue_size=10)
 
-        self.marker_pub = rospy.Publisher(self.markers_topic, MarkerArray, \
-            queue_size=1)
-        self.pose_pub = rospy.Publisher(self.poses_topic, PoseArray, \
-            queue_size=1)
-        self.error_pub = rospy.Publisher(self.error_topic, PoseError, \
-            queue_size=1)
+        self.marker_pub = rospy.Publisher("marker_array", MarkerArray, queue_size=1)
+        self.pose_pub = rospy.Publisher("pose_array", PoseArray, queue_size=1)
+        self.error_pub = rospy.Publisher("error", PoseError, queue_size=1)
 
         self.buffer = tf2_ros.Buffer(rospy.Time.from_sec(self.cache_time))
         self.listener = tf2_ros.TransformListener(self.buffer)
@@ -41,7 +34,7 @@ class ClosureVisualizerNode:
         self.markers = MarkerArray()
         self.marker_id = 0
         self.pose_array = PoseArray()
-        self.pose_array.header.frame_id = "world"
+        self.pose_array.header.frame_id = self.world_frame_id
 
     def closure_cb(self, msg):
         """ ROS callback for closure results from LCD_ros node
@@ -58,10 +51,10 @@ class ClosureVisualizerNode:
         w_to_b_ref_truth_tf = TransformStamped()
         w_to_b_cur_truth_tf = TransformStamped()
         try:
-            w_to_b_ref_truth_tf = self.buffer.lookup_transform("world",
-                self.body_frame, ref_time)
-            w_to_b_cur_truth_tf = self.buffer.lookup_transform("world",
-                self.body_frame, cur_time)
+            w_to_b_ref_truth_tf = self.buffer.lookup_transform(self.world_frame_id,
+                self.body_frame_id, ref_time)
+            w_to_b_cur_truth_tf = self.buffer.lookup_transform(self.world_frame_id,
+                self.body_frame_id, cur_time)
         except (tf2_ros.LookupException, tf2_ros.ConnectivityException,
                 tf2_ros.ExtrapolationException) as error:
             rospy.logerr("closure_visualizer_node error: " + str(error))
@@ -73,9 +66,9 @@ class ClosureVisualizerNode:
         tf_1_2 = np.dot(tf_1, tf_2)
 
         w_to_b_cur_estim_tf = TransformStamped()
-        w_to_b_cur_estim_tf.header.frame_id = "world"
+        w_to_b_cur_estim_tf.header.frame_id = self.world_frame_id
         w_to_b_cur_estim_tf.header.stamp = cur_time
-        w_to_b_cur_estim_tf.child_frame_id = self.body_frame
+        w_to_b_cur_estim_tf.child_frame_id = self.body_frame_id
         w_to_b_cur_estim_tf.transform = self.tf_mat2msg(tf_1_2)
 
         transforms = [w_to_b_ref_truth_tf,
@@ -112,7 +105,7 @@ class ClosureVisualizerNode:
         # Build arrow pointing from ref frame to estimated cur frame
         estim_arrow = Marker()
         estim_arrow.header.stamp = rospy.Time.now()
-        estim_arrow.header.frame_id = "world"
+        estim_arrow.header.frame_id = self.world_frame_id
         estim_arrow.ns = "LCD"
         estim_arrow.type = Marker.ARROW
         estim_arrow.action = Marker.ADD
@@ -129,7 +122,7 @@ class ClosureVisualizerNode:
         # Build arrow point from estimated cur frame to truth cur frame
         error_arrow = Marker()
         error_arrow.header.stamp = rospy.Time.now()
-        error_arrow.header.frame_id = "world"
+        error_arrow.header.frame_id = self.world_frame_id
         error_arrow.ns = "LCD"
         error_arrow.type = Marker.ARROW
         error_arrow.action = Marker.ADD

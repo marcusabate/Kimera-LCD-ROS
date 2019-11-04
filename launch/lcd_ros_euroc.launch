@@ -1,59 +1,35 @@
 <launch>
-  <arg name="dataset_name" value="EUROC"/>
-  <arg name="cache_time"   default="144.0"/>
-  <arg name="use_sim_time" default="true"/>
-  <arg name="online"       default="true"/>
+  <arg name="dataset_name"   value="EUROC"/>
+  <arg name="cache_time"     default="144.0"/>
   <arg name="path_to_vocab"
-        value="/home/marcus/code/VIO/vocabulary/ORBvoc.txt"/>
+       default="/home/marcus/catkin_ws/src/Kimera-VIO/vocabulary/ORBvoc.yml"/>
+
+  <arg name="body_frame_id"   value="base_link"/>
+  <arg name="world_frame_id"  value="world"/>
+  <arg name="map_frame_id"    value="map"/>
   <arg name="log_output"      default="false" />
-  <arg name="visualize"       default="true"/>
-
+  <arg name="visualize"       default="false"/>
   <arg name="error_to_scale"  default="false"/>
-  <arg name="body_frame"      default="base_link"/>
-  <arg name="gnd_truth_topic" default="/vicon/firefly_sbx/firefly_sbx"/>
 
-  <!-- Publisher topic arguments -->
-  <arg name="closure_result_topic"  default="result"/>
-  <arg name="closure_image_topic"   default="image"/>
-  <arg name="error_topic"           default="error"/>
-  <arg name="markers_topic"         default="marker_array"/>
-  <arg name="poses_topic"           default="pose_array"/>
+  <arg name="gnd_truth_topic"       value="/vicon/firefly_sbx/firefly_sbx"/>
+  <arg name="left_cam_topic"        value="/cam0/image_raw"/>
+  <arg name="right_cam_topic"       value="/cam1/image_raw"/>
+  <arg name="lcd_input_topic"       value="lcd_input"/>
+  <arg name="closure_result_topic"  value="result"/>
+  <arg name="closure_image_topic"   value="image"/>
+  <arg name="error_topic"           value="error"/>
+  <arg name="markers_topic"         value="marker_array"/>
+  <arg name="poses_topic"           value="pose_array"/>
 
-  <!-- Subscriber topics -->
-  <arg name="left_cam_topic"  value="/cam0/image_raw"/>
-  <arg name="right_cam_topic" value="/cam1/image_raw"/>
-  <arg name="imu_topic"       value="/fcu/imu0"/>
-
-  <include file="$(find lcd_ros)/launch/lcd_ros.launch"
+  <include file="$(find kimera_lcd_ros)/launch/lcd_ros.launch"
     pass_all_args="true"/>
 
   <!-- Launch Transfrom Converter Node -->
-  <node ns="lcd" name="transform_converter_node" pkg="lcd_ros"
+  <node ns="lcd" name="transform_converter_node" pkg="kimera_lcd_ros"
         type="transform_converter_node.py" output="screen">
 
     <param name="gnd_truth_topic" value="$(arg gnd_truth_topic)"/>
-    <param name="body_frame" value="$(arg body_frame)"/>
+    <param name="body_frame_id" value="$(arg body_frame_id)"/>
+    <param name="world_frame_id" value="$(arg world_frame_id)"/>
   </node>
-
-  <node pkg="tf2_ros" type="static_transform_publisher" name="fcu_tf_pub"
-        args="0 0 0 1 0 0 0 base_link fcu" />
-
-  <node pkg="tf2_ros" type="static_transform_publisher" name="imu_tf_pub"
-        args="0 0 0 1 0 0 0 base_link imu0" />
-
-  <!-- Launch Visualization Nodes -->
-  <group if="$(arg visualize)">
-    <node name="rviz" pkg="rviz" type="rviz" output="screen"
-          args="-d $(find lcd_ros)/rviz/lcd_ros_config.rviz">
-
-      <!-- Remap Subscriber Topics -->
-      <remap from="/cam0/image_raw"   to="$(arg left_cam_topic)"/>
-      <remap from="/cam1/image_raw"   to="$(arg right_cam_topic)"/>
-      <remap from="/lcd/result"       to="/lcd/$(arg closure_result_topic)"/>
-      <remap from="/lcd/image"        to="/lcd/$(arg closure_image_topic)"/>
-      <remap from="/lcd/marker_array" to="/lcd/$(arg markers_topic)"/>
-      <remap from="/lcd/pose_array"   to="/lcd/$(arg poses_topic)"/>
-    </node>
-  </group>
-
 </launch>

@@ -1,0 +1,18 @@
+<launch>
+  <arg name="dataset_name"          value="EUROC"/>
+  <arg name="left_cam_topic"        value="/cam0/image_raw"/>
+  <arg name="right_cam_topic"       value="/cam1/image_raw"/>
+  <arg name="lcd_input_topic"       value="lcd_input"/>
+  <arg name="params_folder"         value="$(find kimera_lcd_ros)/param/$(arg dataset_name)"/>
+  
+  <!-- Launch ROS Data Provider -->
+  <node ns="lcd" name="ros_lcd_data_provider_node" pkg="kimera_lcd_ros" type="ros_lcd_data_provider.py"
+        output="screen">
+
+    <rosparam command="load" file="$(arg params_folder)/calibration.yaml"/>    
+
+    <remap from="lcd_input" to="$(arg lcd_input_topic)"/>
+    <remap from="left_cam"  to="$(arg left_cam_topic)"/>
+    <remap from="right_cam" to="$(arg right_cam_topic)"/>
+  </node>
+  </launch>
