@@ -1,3 +1,7 @@
+# NOTE: Deprecated
+
+This package does not work with the most up-to-date Kimera and at this point is only intended as an example of how to implement a ROS wrapper for the LCD module of Kimera.
+
 # Kimera-LCD-ROS
 
 This is a ROS wrapper for testing the `LoopClosureDetector` tools for Kimera-VIO.
